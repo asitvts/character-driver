@@ -18,8 +18,9 @@ static struct device* device;
 
 
 static int my_open(struct inode* inode, struct file* file){
-	
-	pr_info("device opened\n");
+	static int counter = 0;
+	counter++;
+	pr_info("device opened %dth time\n", counter);
 	return 0;
 
 }
