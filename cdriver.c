@@ -32,11 +32,6 @@ static int my_release(struct inode* inode, struct file* file){
 }
 
 
-// copy_to_user(*to, *from, n);
-// copy_from_user(*to, *from, n);
-
-
-
 static int data_size=0;
 
 static ssize_t my_read(struct file* file, char* __user buf, size_t count, loff_t* offset){
