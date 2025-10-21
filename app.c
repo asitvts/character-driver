@@ -17,6 +17,7 @@ void* thread_func(void*){
 		printf("error openeing the file\n");
 		return NULL;
 	}
+	printf("file opened\n");
 	
 	sleep(5);
 	

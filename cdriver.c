@@ -3,6 +3,7 @@
 #include <linux/device.h>
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
+#include <linux/atomic.h>	// for atomic counter "limit"
 
 #define DEVICE_NAME "my_device"
 #define BUF_SIZE 1024
@@ -17,14 +18,40 @@ static struct class* my_class;
 static struct device* device;
 
 
+
+static atomic_t limit = ATOMIC_INIT(1);
+// will be using this as allow boolean, if 1 thread is allowed to access the operation
+
+
 static int my_open(struct inode* inode, struct file* file){
 	static int counter = 0;
 	counter++;
+	
+	
+	// atomic_cmpxchg(ptr, old, new)
+	// Atomically:
+	//   if (*ptr == old)
+	//       *ptr = new
+	//       return old
+	//   else
+	//       return *ptr (no change made)
+
+	if(atomic_cmpxchg(&limit, 1, 0) != 1){
+		// cannot allow concurrent access
+		pr_info("cannot allow concurrent access\n");
+		return -EBUSY;
+	}
+	// now allow count is 0 using cmpxchg
+	
 	pr_info("device opened %dth time\n", counter);
 	return 0;
 
 }
+
+
 static int my_release(struct inode* inode, struct file* file){
+
+	atomic_set(&limit, 1);  // Reset to available
 	
 	pr_info("device closed/released\n");
 	return 0;
