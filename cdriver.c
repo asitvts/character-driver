@@ -4,6 +4,7 @@
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
 #include <linux/atomic.h>	// for atomic counter "limit"
+#include <linux/cred.h>		// credentials of the current process/task_struct
 
 #define DEVICE_NAME "my_device"
 #define BUF_SIZE 1024
@@ -17,6 +18,10 @@ static struct class* my_class;
 
 static struct device* device;
 
+static atomic_t user_ref_count = ATOMIC_INIT(0);
+static atomic_t current_users  = ATOMIC_INIT(0);
+static kuid_t current_user_id  = INVALID_UID;
+
 
 
 static atomic_t limit = ATOMIC_INIT(1);
@@ -25,7 +30,6 @@ static atomic_t limit = ATOMIC_INIT(1);
 
 static int my_open(struct inode* inode, struct file* file){
 	static int counter = 0;
-	counter++;
 	
 	
 	// atomic_cmpxchg(ptr, old, new)
@@ -35,14 +39,35 @@ static int my_open(struct inode* inode, struct file* file){
 	//       return old
 	//   else
 	//       return *ptr (no change made)
-
+	
+	if(atomic_cmpxchg(&current_users, 0, 1) == 0 || uid_eq(current_user_id, current_uid()) ){
+		// first ever user
+		atomic_inc(&user_ref_count);
+		if(atomic_read(&user_ref_count)==1)current_user_id = current_uid();	// first ever access by this user
+	}
+	else{
+		// a user is already in
+		pr_info("access denied as a user is already using this driver\n");
+		return -EBUSY;
+	}
+	
+	
+	
+	
 	if(atomic_cmpxchg(&limit, 1, 0) != 1){
 		// cannot allow concurrent access
+		atomic_dec(&user_ref_count);
+		if(atomic_read(&user_ref_count)==0){
+			atomic_set(&current_users, 0);
+			current_user_id=INVALID_UID;
+		}
 		pr_info("cannot allow concurrent access\n");
 		return -EBUSY;
 	}
 	// now allow count is 0 using cmpxchg
 	
+	
+	counter++;
 	pr_info("device opened %dth time\n", counter);
 	return 0;
 
@@ -50,7 +75,13 @@ static int my_open(struct inode* inode, struct file* file){
 
 
 static int my_release(struct inode* inode, struct file* file){
-
+	
+	atomic_dec(&user_ref_count);
+	if(atomic_read(&user_ref_count)==0){
+		atomic_set(&current_users, 0);
+		current_user_id=INVALID_UID;
+	}
+	
 	atomic_set(&limit, 1);  // Reset to available
 	
 	pr_info("device closed/released\n");
